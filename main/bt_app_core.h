@@ -17,6 +17,9 @@
 /* signal for `bt_app_work_dispatch` */
 #define BT_APP_SIG_WORK_DISPATCH    (0x01)
 
+/* Max audio buffer size for safety in ring buffer */
+#define MAX_AUDIO_BUFFER_SIZE 2048
+
 /**
  * @brief  handler for the dispatched work
  *
@@ -66,7 +69,7 @@ void bt_app_task_start_up(void);
 void bt_app_task_shut_down(void);
 
 /**
- * @brief  start up the is task
+ * @brief  start up the i2s task
  */
 void bt_i2s_task_start_up(void);
 
@@ -81,9 +84,16 @@ void bt_i2s_task_shut_down(void);
  * @param [in] data  pointer to data stream
  * @param [in] size  data length in byte
  *
- * @return size if writteen ringbuffer successfully, 0 others
+ * @return size if written to ringbuffer successfully, 0 otherwise
  */
+size_t write_ringbuf(const uint8_t *data, size_t size);
 
- size_t write_ringbuf(const uint8_t *data, size_t size);
+/**
+ * @brief  callback for handling received A2DP data
+ *
+ * @param [in] data pointer to audio stream
+ * @param [in] len  size in bytes of audio stream
+ */
+void bt_app_a2d_data_cb(const uint8_t *data, uint32_t len);
 
 #endif /* __BT_APP_CORE_H__ */
