@@ -120,6 +120,20 @@ static void bt_app_task_handler(void *arg)
     }
 }
 
+static void i2s_writer_task(void *arg) {
+    size_t bytes_written;
+    while (1) {
+        size_t item_size;
+        uint8_t *data = (uint8_t *)xRingbufferReceive(s_ringbuf, &item_size, portMAX_DELAY);
+        if (data) {
+            if (tx_chan) {
+                i2s_channel_write(tx_chan, data, item_size, &bytes_written, portMAX_DELAY);
+            }
+            vRingbufferReturnItem(s_ringbuf, data);
+        }
+    }
+}
+
 static void bt_i2s_task_handler(void *arg)
 {
     uint8_t *data = NULL;
@@ -186,6 +200,19 @@ bool bt_app_work_dispatch(bt_app_cb_t p_cback, uint16_t event, void *p_params, i
     return false;
 }
 
+void bt_i2s_task_start_up(void) {
+    if (!s_ringbuf) {
+        s_ringbuf = xRingbufferCreate(8 * 1024, RINGBUF_TYPE_BYTEBUF);
+        if (!s_ringbuf) {
+            ESP_LOGE(BT_AV_TAG, "Failed to create ring buffer");
+        }
+    }
+    // Démarrer la tâche d’écriture I2S ici si nécessaire
+    if (!s_i2s_task_handle) {
+        xTaskCreatePinnedToCore(i2s_writer_task, "i2s_writer", 4096, NULL, 5, &s_i2s_task_handle, 0);
+    }
+}
+
 void bt_app_task_start_up(void)
 {
     s_bt_app_task_queue = xQueueCreate(10, sizeof(bt_app_msg_t));
@@ -210,7 +237,7 @@ void bt_app_task_shut_down(void)
     }
 }
 
-static void i2s_writer_task(void *arg) {
+/*static void i2s_writer_task(void *arg) {
     while (1) {
         size_t item_size;
         uint8_t *data = (uint8_t *)xRingbufferReceive(s_ringbuf, &item_size, portMAX_DELAY);
@@ -229,21 +256,7 @@ static void i2s_writer_task(void *arg) {
             vRingbufferReturnItem(s_ringbuf, data);
         }
     }
-}
-
-void bt_i2s_task_start_up(void) {
-    if (!s_ringbuf) {
-        s_ringbuf = xRingbufferCreate(8 * 1024, RINGBUF_TYPE_BYTEBUF);
-        if (!s_ringbuf) {
-            ESP_LOGE(BT_AV_TAG, "Failed to create ring buffer");
-            return;
-        }
-    }
-
-    if (!s_i2s_task_handle) {
-        xTaskCreatePinnedToCore(i2s_writer_task, "i2s_writer", 4096, NULL, 5, &s_i2s_task_handle, 0);
-    }
-}
+}*/
 
 void bt_i2s_task_shut_down(void) {
     if (s_i2s_task_handle) {
@@ -252,22 +265,22 @@ void bt_i2s_task_shut_down(void) {
     }
 
     if (s_ringbuf) {
-        vRingbufferDelete(s_ringbuf);
-        s_ringbuf = NULL;
+    vRingbufferDelete(s_ringbuf);
+    s_ringbuf = NULL;
     }
 }
 
 
-size_t write_ringbuf(const uint8_t *data, size_t size) {
-    if (s_ringbuf == NULL) {
+size_t write_ringbuf(const uint8_t *data, size_t len) {
+    if (!s_ringbuf) {
         ESP_LOGE(BT_AV_TAG, "Ring buffer not initialized");
         return 0;
     }
-    if (!xRingbufferSend(s_ringbuf, data, size, portMAX_DELAY)) {
-        ESP_LOGW(BT_AV_TAG, "Failed to write to ring buffer");
+    if (!xRingbufferSend(s_ringbuf, data, len, pdMS_TO_TICKS(10))) {
+        ESP_LOGW(BT_AV_TAG, "Ring buffer full, dropping packet");
         return 0;
     }
-    return size;
+    return len;
 }
 
 /*size_t write_ringbuf(const uint8_t *data, size_t size)
